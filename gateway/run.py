@@ -65,6 +65,9 @@ def render_config():
                 t.update({"name": "web_search", "group": "web", "use": "deerflow.community.tavily.tools:web_search_tool",
                           "max_results": 5, "api_key": "$TAVILY_API_KEY"})
         log("web_search: Tavily")
+    reg = (os.environ.get("ALLOW_REGISTRATION") or "").strip().lower() in ("1", "true", "yes", "on")
+    cfg.setdefault("auth", {}).setdefault("local", {})["allow_registration"] = reg
+    log("self-registration: " + ("ON (anyone with the URL can create an account)" if reg else "off"))
     os.makedirs(os.path.dirname(CFG_OUT), exist_ok=True)
     with open(CFG_OUT, "w") as f:
         yaml.safe_dump(cfg, f, sort_keys=False, allow_unicode=True)
