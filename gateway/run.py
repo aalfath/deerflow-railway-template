@@ -151,11 +151,19 @@ def main():
     prepare_home()
     wait_for_db()
     workers = os.environ.get("GATEWAY_WORKERS") or "1"
-    cmd = [sys.executable, "-m", "uvicorn", "app.gateway.app:app", "--host", "::", "--port", PORT,
+    # One dual-stack socket (IPv6 + IPv4): Railway's private network is IPv6, the
+    # loopback admin seeding uses IPv4, and asyncio sets IPV6_V6ONLY on "::".
+    sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+    sock.bind(("::", int(PORT)))
+    sock.set_inheritable(True)
+    cmd = [sys.executable, "-m", "uvicorn", "app.gateway.app:app", "--fd", str(sock.fileno()),
            "--workers", workers, "--timeout-graceful-shutdown", "10"]
     env = dict(os.environ, PYTHONPATH="/app/backend")
-    log(f"starting Gateway on [::]:{PORT} (workers={workers})")
-    proc = subprocess.Popen(cmd, cwd="/app/backend", env=env)
+    log(f"starting Gateway on [::]:{PORT} + 0.0.0.0:{PORT} (workers={workers})")
+    proc = subprocess.Popen(cmd, cwd="/app/backend", env=env, pass_fds=(sock.fileno(),))
+    sock.close()
     state = {"signal": None, "seed_failed": None}
 
     def forward(signum, _frame):
